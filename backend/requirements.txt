@@ -1,0 +1,6 @@
+fastapi
+python-multipart
+uvicorn
+pandas
+anvil-parser
+nbtlib
