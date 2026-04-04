@@ -1,8 +1,99 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Upload, FileJson, FileArchive } from "lucide-react";
 import { uploadProgressionFiles } from "@/lib/api";
 import { extractUuidFromFilename, getPlayerAvatarUrls, getPlayerUsername } from "@/lib/playerAvatar";
+
+type ProgressionTimelineEntry = {
+  advancement?: string;
+  criterion?: string;
+  timestamp?: string;
+  done?: boolean;
+};
+
+type ProgressionAnalysisResult = {
+  summary?: {
+    total_advancements?: number;
+    completed?: number;
+    completion_rate?: number;
+  };
+  timeline?: ProgressionTimelineEntry[];
+  insights?: {
+    timeline?: {
+      total_time?: string | null;
+      advancements_per_hour?: number;
+      highlights?: string[];
+      milestones?: Array<{
+        key?: string;
+        label?: string;
+        status?: "complete" | "incomplete";
+        after_start?: string | null;
+      }>;
+      key_events?: Record<
+        string,
+        {
+          advancement?: string;
+          timestamp?: string;
+          after_start?: string;
+          hours_after_start?: number;
+        }
+      >;
+      playstyle?: {
+        classification?: string;
+        confidence?: number;
+        reason?: string;
+      };
+    };
+    inventory?: {
+      most_valuable_item?: {
+        item?: string;
+        count?: number;
+        enchanted?: boolean;
+      } | null;
+      resource_richness?: {
+        ores?: number;
+        wood?: number;
+        food?: number;
+      };
+      gear_level?: string;
+      combat_readiness?: {
+        armor_pieces?: number;
+        armor_tier?: string;
+        weapon_tier?: string;
+        enchanted_combat_items?: number;
+        status?: string;
+        insight?: string;
+      };
+    } | null;
+    player_state?: {
+      health?: number;
+      hunger?: number;
+      xp_level?: number;
+      classification?: string;
+      insight?: string;
+    } | null;
+  };
+  player_dat?: Record<string, unknown> | null;
+  dat_file_received?: string | null;
+};
+
+const readNumber = (value: unknown, fallback = 0) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  return fallback;
+};
+
+const toTitle = (value: string) =>
+  value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 
 const renderValue = (value: unknown, depth = 0): React.ReactNode => {
   if (value === null || value === undefined) {
@@ -66,6 +157,32 @@ const Progression = () => {
 
   const playerUuid = extractUuidFromFilename(datName) ?? extractUuidFromFilename(advancementsName);
   const avatarCandidates = playerUuid ? getPlayerAvatarUrls(playerUuid, 120) : null;
+  const progressionResult = analysisResult as ProgressionAnalysisResult | null;
+
+  const playerDat = progressionResult?.player_dat ?? null;
+  const insights = progressionResult?.insights;
+  const timelineInsights = insights?.timeline;
+  const inventoryInsights = insights?.inventory;
+  const playerStateInsights = insights?.player_state;
+  const summary = progressionResult?.summary ?? null;
+  const healthValue = readNumber(playerDat?.health, 0);
+  const foodLevelValue = readNumber(playerDat?.food_level, 0);
+  const xpLevelValue = readNumber(playerDat?.xp_level, 0);
+  const playerContextDisplay =
+    playerDat && typeof playerDat === "object"
+      ? {
+          dimension: (playerDat as Record<string, unknown>).dimension,
+          gamemode:
+            typeof (playerDat as Record<string, unknown>).gamemode === "object" &&
+            (playerDat as Record<string, unknown>).gamemode !== null
+              ? ((playerDat as Record<string, unknown>).gamemode as Record<string, unknown>).name
+              : (playerDat as Record<string, unknown>).gamemode,
+        }
+      : playerDat;
+
+  const milestoneEntries = Array.isArray(timelineInsights?.milestones) ? timelineInsights.milestones : [];
+  const completedMilestones = milestoneEntries.filter((milestone) => milestone.status === "complete");
+  const incompleteMilestones = milestoneEntries.filter((milestone) => milestone.status !== "complete");
 
   const handleAdvancementsUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -240,18 +357,20 @@ const Progression = () => {
                 </div>
               ) : analysisResult ? (
                 <div className="space-y-8">
-                  {avatarCandidates && (
-                    <div className="mc-panel-inset p-4 flex items-center gap-4">
+                  <div className="mc-panel-inset p-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <div className="flex items-center gap-4">
                       <img
-                        src={avatarCandidates[Math.min(avatarIndex, avatarCandidates.length - 1)]}
+                        src={avatarCandidates ? avatarCandidates[Math.min(avatarIndex, avatarCandidates.length - 1)] : "/assets/minecraft/mobs/unknown.svg"}
                         alt="Player avatar"
                         className="w-16 h-16 border border-border bg-mc-inset"
                         style={{ imageRendering: "pixelated" }}
                         onError={(e) => {
                           e.currentTarget.onerror = null;
-                          setAvatarIndex((currentIndex) =>
-                            currentIndex < avatarCandidates.length - 1 ? currentIndex + 1 : currentIndex,
-                          );
+                          if (avatarCandidates) {
+                            setAvatarIndex((currentIndex) =>
+                              currentIndex < avatarCandidates.length - 1 ? currentIndex + 1 : currentIndex,
+                            );
+                          }
                         }}
                       />
                       <div>
@@ -259,14 +378,165 @@ const Progression = () => {
                         <p className="font-mono text-xs text-muted-foreground">Player Profile</p>
                       </div>
                     </div>
-                  )}
+
+                    <div className="grid grid-cols-3 gap-3 md:gap-4">
+                      <div className="px-10 py-2 flex items-center gap-2 min-w-[92px] justify-center">
+                        <img src="/assets/minecraft/ui/mchalfheart.png" alt="Health" className="w-10 h-10" style={{ imageRendering: "pixelated" }} />
+                        <span className="font-mono text-lg text-foreground">{healthValue.toFixed(1)}</span>
+                      </div>
+                      <div className="px-3 py-2 flex items-center gap-2 min-w-[92px] justify-center">
+                        <img src="/assets/minecraft/ui/mchunger.png" alt="Food level" className="w-10 h-10" style={{ imageRendering: "pixelated" }} />
+                        <span className="font-mono text-lg text-foreground">{Math.round(foodLevelValue)}</span>
+                      </div>
+                      <div className="px-3 py-2 flex items-center gap-2 min-w-[92px] justify-center">
+                        <img src="/assets/minecraft/ui/bottleexp.webp" alt="XP level" className="w-10 h-10" style={{ imageRendering: "pixelated" }} />
+                        <span className="font-mono text-lg text-foreground">{Math.round(xpLevelValue)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="font-pixel text-lg text-foreground mb-4 border-b border-border pb-2">
+                        Player Data
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="mc-panel-inset p-3">
+                          <p className="font-pixel text-xs text-muted-foreground mb-1">Dimension</p>
+                          <p className="font-mono text-sm text-foreground">
+                            {String((playerContextDisplay as Record<string, unknown> | null)?.dimension ?? "unknown")}
+                          </p>
+                        </div>
+                        <div className="mc-panel-inset p-3">
+                          <p className="font-pixel text-xs text-muted-foreground mb-1">Gamemode</p>
+                          <p className="font-mono text-sm text-foreground">
+                            {String((playerContextDisplay as Record<string, unknown> | null)?.gamemode ?? "unknown")}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
                   <div>
                     <h3 className="font-pixel text-lg text-foreground mb-4 border-b border-border pb-2">
-                      Backend Output
+                      Progression Insights
                     </h3>
-                    <div className="font-mono text-sm">
-                      {renderValue(analysisResult)}
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="mc-panel-inset p-4">
+                          <p className="font-pixel text-sm text-foreground mb-2">Playstyle</p>
+                          <p className="font-mono text-sm text-primary">
+                            {toTitle(timelineInsights?.playstyle?.classification ?? "unknown")}
+                          </p>
+                          <p className="font-mono text-xs text-muted-foreground">
+                            Confidence: {Math.round(readNumber(timelineInsights?.playstyle?.confidence, 0) * 100)}%
+                          </p>
+                          <p className="font-mono text-xs text-muted-foreground mt-1">
+                            {timelineInsights?.playstyle?.reason ?? "Not enough data for a reliable playstyle classification."}
+                          </p>
+                        </div>
+
+                        <div className="mc-panel-inset p-4">
+                          <p className="font-pixel text-sm text-foreground mb-2">Player State</p>
+                          {playerStateInsights ? (
+                            <div className="space-y-2 font-mono text-sm text-muted-foreground">
+                              <p>State: {toTitle(playerStateInsights.classification ?? "unknown")}</p>
+                              <p>{playerStateInsights.insight ?? ""}</p>
+                            </div>
+                          ) : (
+                            <p className="font-mono text-sm text-muted-foreground">Upload a player DAT file to analyze risk state.</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mc-panel-inset p-4">
+                        <p className="font-pixel text-sm text-foreground mb-2">Timeline Pace</p>
+                        <p className="font-mono text-sm text-muted-foreground">
+                          Total time: {timelineInsights?.total_time ?? "unknown"}
+                        </p>
+                        <p className="font-mono text-sm text-muted-foreground">
+                          Advancements/hour: {timelineInsights?.advancements_per_hour ?? 0}
+                        </p>
+                      </div>
+
+                      <div className="mc-panel-inset p-4">
+                        <p className="font-pixel text-sm text-foreground mb-2">Key Milestones</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="mc-panel-inset p-3">
+                            <p className="font-pixel text-lg text-primary mb-2 text-left">Completed</p>
+                            {completedMilestones.length > 0 ? (
+                              <div className="space-y-1">
+                                {completedMilestones.map((milestone) => (
+                                  <div key={milestone.key} className="font-mono text-sm text-primary flex items-center justify-between gap-3">
+                                    <span>{milestone.label}</span>
+                                    <span className="text-right">{milestone.after_start ?? "complete"}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="font-mono text-sm text-muted-foreground text-left">No completed milestones yet.</p>
+                            )}
+                          </div>
+
+                          <div className="mc-panel-inset p-3">
+                            <p className="font-pixel text-lg text-destructive mb-2 text-left">Incomplete</p>
+                            {incompleteMilestones.length > 0 ? (
+                              <div className="space-y-1">
+                                {incompleteMilestones.map((milestone) => (
+                                  <div key={milestone.key} className="font-mono text-sm text-destructive flex items-center justify-between gap-3">
+                                    <span>{milestone.label}</span>
+                                    <span className="text-right">incomplete</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="font-mono text-sm text-muted-foreground text-right">All tracked milestones completed.</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mc-panel-inset p-4">
+                        <p className="font-pixel text-sm text-foreground mb-2">Inventory Insights</p>
+                        {inventoryInsights ? (
+                          <div className="space-y-2 font-mono text-sm text-muted-foreground">
+                            <p>
+                              Most valuable item: {inventoryInsights.most_valuable_item?.item ?? "unknown"}
+                              {inventoryInsights.most_valuable_item?.enchanted ? " (enchanted)" : ""}
+                            </p>
+                            <p>
+                              Resource richness: ores {inventoryInsights.resource_richness?.ores ?? 0}, wood {inventoryInsights.resource_richness?.wood ?? 0}, food {inventoryInsights.resource_richness?.food ?? 0}
+                            </p>
+                            <p>Gear level: {toTitle(inventoryInsights.gear_level ?? "unknown")}</p>
+                            <p>
+                              Combat readiness: {toTitle(inventoryInsights.combat_readiness?.status ?? "unknown")}
+                            </p>
+                            <p>
+                              Armor pieces: {inventoryInsights.combat_readiness?.armor_pieces ?? 0}, armor tier {toTitle(inventoryInsights.combat_readiness?.armor_tier ?? "none")}, weapon tier {toTitle(inventoryInsights.combat_readiness?.weapon_tier ?? "none")}, enchanted combat items {inventoryInsights.combat_readiness?.enchanted_combat_items ?? 0}
+                            </p>
+                            <p>{inventoryInsights.combat_readiness?.insight ?? ""}</p>
+                          </div>
+                        ) : (
+                          <p className="font-mono text-sm text-muted-foreground">Upload a player DAT file to unlock inventory insights.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="font-pixel text-lg text-foreground mb-4 border-b border-border pb-2">
+                      Advancement Summary
+                    </h3>
+                    <div className="font-mono text-sm space-y-2">
+                      <p className="text-muted-foreground">
+                        TOTAL_ADVANCEMENTS: <span className="text-accent">{summary?.total_advancements ?? 0}</span>
+                      </p>
+                      <p className="text-muted-foreground">
+                        COMPLETED: <span className="text-accent">{summary?.completed ?? 0}</span>
+                      </p>
+                      <p className="text-muted-foreground">
+                        COMPLETION_RATE (completed / total_advancements): <span className="text-accent">{readNumber(summary?.completion_rate, 0).toFixed(2)}</span>
+                      </p>
                     </div>
                   </div>
                 </div>

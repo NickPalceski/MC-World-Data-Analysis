@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from playerAnalysis import analyze_player_stats
-from progressionAnalysis import analyze_player_dat, analyze_progression
+from progressionAnalysis import analyze_player_dat, analyze_progression, build_progression_insights
 from WorldAnalysis import generate_heatmap
 
 app = FastAPI()
@@ -91,6 +91,12 @@ async def progression_analysis(
         else:
             result["player_dat"] = None
             result["dat_file_received"] = None
+
+        result["insights"] = build_progression_insights(
+            result.get("summary", {}),
+            result.get("timeline", []),
+            result.get("player_dat"),
+        )
         return result
     except Exception as error:
         raise HTTPException(status_code=400, detail=f"Progression analysis failed: {error}") from error
