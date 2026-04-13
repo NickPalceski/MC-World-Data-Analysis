@@ -1,140 +1,66 @@
-# MC Project
+# JSON Craft
 
-A local web app for Minecraft world save analysis with:
+Local web app for Minecraft save analysis: **FastAPI** backend and **React + Vite + TypeScript** frontend. The UI is a **single page** with one combined import panel: upload **stats**, **advancements**, and **player `.dat`** together; analysis runs only after all three files are selected.
 
-- **Backend**: FastAPI (Python)
-- **Frontend**: React + Vite + TypeScript
+---
 
-It supports three analysis flows:
+## Run locally
 
-- **Player analysis** (`.json` stats file)
-- **Progression analysis** (`.json` advancements file, optional `.dat` player file)
-- **World analysis** (one or more `.mca` region files)
+**Prerequisites:** Node.js 18+ and npm, Python 3.10+.
 
-## Quick Start
-
-To run locally:
-
-1. **Frontend only** (required):
-
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
-
-   Open `http://localhost:5173` in your browser.
-
-2. Upload your Minecraft data files (stats `.json`, advancements `.json`, or `.mca` region files) through the UI for analysis.
-
-> **Note**: For now, the frontend serves as the interface for file uploads and analysis workflows.
-
-## Repository Structure
-
-- `backend/` — API + analysis code
-- `frontend/` — React UI
-
-## Prerequisites
-
-- Node.js 18+ and npm
-- Python 3.10+ (3.13 works) — _optional, for backend development_
-
-## 1) Backend Setup
-
-From repo root:
+### Terminal 1 — backend (from repo root)
 
 ```bash
 cd backend
 python -m venv .venv
 ```
 
-### Activate virtual environment
+Activate the venv:
 
-Windows PowerShell:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-macOS/Linux:
-
-```bash
-source .venv/bin/activate
-```
-
-Install dependencies:
+- **Windows (PowerShell):** `.\.venv\Scripts\Activate.ps1`
+- **macOS/Linux:** `source .venv/bin/activate`
 
 ```bash
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-```
-
-Run API server:
-
-```bash
 python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Health check:
+- Health check: [http://localhost:8000/health](http://localhost:8000/health) → `{ "status": "ok" }`
 
-- Open `http://localhost:8000/health`
-- Expected response: `{ "status": "ok" }`
-
-## 2) Frontend Setup
-
-In a second terminal, from repo root:
+### Terminal 2 — frontend (from repo root)
 
 ```bash
 cd frontend
 npm install
+npm run dev
 ```
 
-(Optional) create `.env` in `frontend/` to set API URL explicitly:
+Open the URL Vite prints (usually [http://localhost:5173](http://localhost:5173)).
+
+**Optional:** create `frontend/.env` if the API is not on the default host:
 
 ```env
 VITE_API_URL=http://localhost:8000
 ```
 
-Start dev server:
+Upload **stats** `.json`, **advancements** `.json`, and **player** `.dat` through the UI (all three required).
 
-```bash
-npm run dev
-```
+---
 
-Open the local URL shown by Vite (typically `http://localhost:5173`).
+## Backend analysis modules
 
-## 3) Using the App
+| File                           | Role                                                                                                                                                                                                                                                                                    |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`main.py`**                  | FastAPI app: CORS, routes (`/health`, `/player`, `/progression`, `/player-name/{uuid}`), multipart uploads, and wiring results from the modules below. Progression requires **both** advancements JSON and player `.dat`.                                                               |
+| **`playerAnalysis.py`**        | Reads player **stats** `.json`, builds a tidy table of stat categories (pandas), returns K/D, total mined blocks, **top 5** mined blocks, top killed mobs, and most dangerous mobs.                                                                                                     |
+| **`progressionAnalysis.py`**   | Reads **advancements** `.json` into a timeline and summary; milestone-style events; rule-based playstyle scores; parses **player** `.dat` (gzip-aware NBT via `nbtlib`) for position, dimension, gamemode, vitals, inventory, combat-readiness heuristics, and risk-style player state. |
+| **`ml_advancement_branch.py`** | ML on advancements: chronological train/test split, logistic regression on hand-built features, confusion matrix and metrics for the API; optional CLI exports a confusion-matrix PNG. See the docs linked below.                                                                       |
 
-### Player Page
+---
 
-- Navigate to **Player Analysis**
-- Upload a player stats `.json` file
-- Backend endpoint used: `POST /player`
+## Documentation
 
-### Progression Page
-
-- Navigate to **Progression**
-- Upload:
-  - advancements `.json` (required)
-  - player `.dat` (optional but supported)
-- Backend endpoint used: `POST /progression`
-- Response includes parsed `.dat` output under `player_dat` when provided
-
-### World Page
-
-- Navigate to **World Analysis**
-- Select a folder containing region `.mca` files
-- Backend endpoint used: `POST /world`
-
-## API Endpoints Summary
-
-- `GET /health`
-- `POST /player` (multipart form: `file`)
-- `POST /progression` (multipart form: `advancements_file`, optional `dat_file`)
-- `POST /world` (multipart form: repeated `files`)
-
-## Development Notes
-
-- Backend code entry point: `backend/main.py`
-- Frontend routing entry point: `frontend/src/App.tsx`
-- API helper used by frontend: `frontend/src/lib/api.ts`
+| Document                                             | Contents                                      |
+| ---------------------------------------------------- | --------------------------------------------- |
+| [docs/BACKEND_ANALYSIS.md](docs/BACKEND_ANALYSIS.md) | End-to-end explanation of backend processing. |

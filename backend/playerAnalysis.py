@@ -24,7 +24,7 @@ def compute_kd(df):
 
     return {"kills": int(kills), "deaths": int(deaths), "kd_ratio": round(kd, 2)}
 
-def most_mined_blocks(df, top_n=10):
+def most_mined_blocks(df, top_n=5):
     mined = df[df["category"] == "mined"]
     return mined.sort_values(by="count", ascending=False).head(top_n).to_dict(orient="records")
 

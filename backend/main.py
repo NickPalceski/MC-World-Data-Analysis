@@ -1,16 +1,14 @@
+import io
 import os
 import re
 import urllib.error
 import urllib.request
 import json
-from tempfile import NamedTemporaryFile
-from typing import Optional
-
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from playerAnalysis import analyze_player_stats
+from ml_advancement_branch import advancement_branch_ml_for_api
 from progressionAnalysis import analyze_player_dat, analyze_progression, build_progression_insights
-from WorldAnalysis import generate_heatmap
 
 app = FastAPI()
 
@@ -74,23 +72,21 @@ async def player_analysis(file: UploadFile = File(...)):
 @app.post("/progression")
 async def progression_analysis(
     advancements_file: UploadFile = File(...),
-    dat_file: Optional[UploadFile] = File(default=None),
+    dat_file: UploadFile = File(...),
 ):
     if not advancements_file.filename or not advancements_file.filename.endswith(".json"):
         raise HTTPException(status_code=400, detail="Expected a .json advancements file")
 
-    if dat_file is not None and (not dat_file.filename or not dat_file.filename.endswith(".dat")):
-        raise HTTPException(status_code=400, detail="Optional player data file must be .dat")
+    if not dat_file.filename or not dat_file.filename.endswith(".dat"):
+        raise HTTPException(status_code=400, detail="Expected a .dat player data file")
 
     try:
-        result = analyze_progression(advancements_file.file)
-        if dat_file is not None:
-            dat_bytes = await dat_file.read()
-            result["player_dat"] = analyze_player_dat(dat_bytes)
-            result["dat_file_received"] = dat_file.filename
-        else:
-            result["player_dat"] = None
-            result["dat_file_received"] = None
+        adv_bytes = await advancements_file.read()
+        result = analyze_progression(io.BytesIO(adv_bytes))
+        result["advancement_branch_ml"] = advancement_branch_ml_for_api(io.BytesIO(adv_bytes))
+        dat_bytes = await dat_file.read()
+        result["player_dat"] = analyze_player_dat(dat_bytes)
+        result["dat_file_received"] = dat_file.filename
 
         result["insights"] = build_progression_insights(
             result.get("summary", {}),
@@ -100,30 +96,3 @@ async def progression_analysis(
         return result
     except Exception as error:
         raise HTTPException(status_code=400, detail=f"Progression analysis failed: {error}") from error
-
-
-@app.post("/world")
-async def world_analysis(files: list[UploadFile] = File(...)):
-    if len(files) == 0:
-        raise HTTPException(status_code=400, detail="At least one .mca file is required")
-
-    temp_paths: list[str] = []
-
-    try:
-        for file in files:
-            if not file.filename or not file.filename.endswith(".mca"):
-                raise HTTPException(status_code=400, detail="All uploaded files must be .mca")
-
-            with NamedTemporaryFile(delete=False, suffix=".mca") as temp_file:
-                temp_file.write(await file.read())
-                temp_paths.append(temp_file.name)
-
-        return {"heatmap": generate_heatmap(temp_paths), "files_processed": len(temp_paths)}
-    except HTTPException:
-        raise
-    except Exception as error:
-        raise HTTPException(status_code=400, detail=f"World analysis failed: {error}") from error
-    finally:
-        for path in temp_paths:
-            if os.path.exists(path):
-                os.remove(path)

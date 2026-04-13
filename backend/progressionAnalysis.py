@@ -182,21 +182,22 @@ def _playstyle_scores(event_rows, hours_to_complete):
         builder_score += 2
 
     return {
-        "explorer": explorer_score,
-        "fighter": fighter_score,
-        "builder": builder_score,
-        "speedrunner": speedrunner_score,
+        "EXPLORER": explorer_score,
+        "FIGHTER": fighter_score,
+        "BUILDER": builder_score,
+        "SPEEDRUNNER": speedrunner_score,
     }
 
 
 def _playstyle_reasons(style, scores):
-    if style == "explorer":
+    style = style.upper()
+    if style == "EXPLORER":
         return "Many travel/biome-oriented advancements unlocked."
-    if style == "fighter":
+    if style == "FIGHTER":
         return "Combat milestones are a strong part of progression."
-    if style == "builder":
+    if style == "BUILDER":
         return "Slower and steadier progression with fewer combat spikes."
-    if style == "speedrunner":
+    if style == "SPEEDRUNNER":
         return "Major progression milestones were completed quickly."
 
     return f"Scores: {scores}"
@@ -592,14 +593,14 @@ def _player_state_insights(player_dat):
         risk_score += 1
 
     if risk_score >= 4:
-        classification = "risky"
-        insight = "Risky playstyle: low health/hunger state suggests frequent danger exposure."
+        classification = "RISKY"
+        insight = "Low health/hunger state suggests frequent danger exposure."
     elif risk_score >= 2:
-        classification = "balanced"
-        insight = "Moderate risk profile: survivability is acceptable but not fully stable."
+        classification = "BALANCED"
+        insight = "Survivability is acceptable but not fully stable."
     else:
-        classification = "safe"
-        insight = "Safe playstyle: current health, hunger, and XP indicate stable conditions."
+        classification = "SAFE"
+        insight = "Current health, hunger, and XP indicate stable conditions."
 
     return {
         "health": round(health, 1),

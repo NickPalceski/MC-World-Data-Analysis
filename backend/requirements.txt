@@ -2,5 +2,6 @@ fastapi
 python-multipart
 uvicorn
 pandas
-anvil-parser
 nbtlib
+scikit-learn
+matplotlib
