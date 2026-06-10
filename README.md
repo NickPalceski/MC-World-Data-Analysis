@@ -3,6 +3,11 @@
 Local web app for Minecraft save analysis: **FastAPI** backend and **React + Vite + TypeScript** frontend. The UI is a **single page** with one combined import panel: upload **stats**, **advancements**, and **player `.dat`** together; analysis runs only after all three files are selected.
 
 ---
+<img width="2048" height="409" alt="MCImport" src="https://github.com/user-attachments/assets/c4d3633e-0437-41df-98f4-ccc696b4095e" />
+<img width="2048" height="654" alt="MCGraph" src="https://github.com/user-attachments/assets/d1c4ae06-b563-4b73-b460-734cfa3855b0" />
+<img width="1674" height="924" alt="MCML" src="https://github.com/user-attachments/assets/a48623dd-a1ee-43a8-9126-404ecb37621d" />
+
+
 
 ## Run locally
 
